@@ -1,0 +1,12 @@
+langchain
+openai
+fastapi
+requests
+duckduckgo-search
+uvicorn
+beautifulsoup4
+python-dotenv
+langserve[all]
+sse_starlette
+langchain-community 
+langsmith
