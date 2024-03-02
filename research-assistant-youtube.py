@@ -109,10 +109,10 @@ SEARCH_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "user",
-            "Write 3 google search queries to search online that form an "
+            "Write a google search query to search online that form an "
             "objective opinion from the following: {question}\n"
-            "You must respond with a list of strings in the following format: "
-            '["query 1", "query 2", "query 3"].',
+            "You must respond with a list of string in the following format: "
+            '[" detailed query "].',
         ),
     ]
 )
@@ -121,7 +121,7 @@ search_question_chain = SEARCH_PROMPT | ChatOpenAI(temperature=0) | StrOutputPar
 
 full_research_chain = search_question_chain | (lambda x: [{"question": q} for q in x]) | web_search_chain.map()
 
-WRITER_SYSTEM_PROMPT = "You are an AI critical thinker research assistant. Your sole purpose is to write well written, critically acclaimed, objective and structured reports on given text."  # noqa: E501
+WRITER_SYSTEM_PROMPT = "You are an AI critical thinker research assistant. Your sole purpose is to retrieve authentic information from the given text."  # noqa: E501
 
 
 # Report prompts from https://github.com/assafelovic/gpt-researcher/blob/master/gpt_researcher/master/prompts.py
@@ -131,10 +131,9 @@ RESEARCH_REPORT_TEMPLATE = """Information:
 --------
 
 Using the above information, answer the following question or topic: "{question}" in a detailed report -- \
-The report should focus on the answer to the question, should be well structured, informative, \
-in depth, with facts and numbers if available and a minimum of 1,200 words.
-
-You should strive to write the report as long as you can using all relevant and necessary information provided.
+If any specific information like numbers, values or facts are asked for, list them in the beginning. The report should focus on the answer to the question, should be well structured, informative, \
+concise, and should list the reasons justifying the answer.
+If it is explicitly asked in the question or topic to make the response detailed, you should strive to write the report as long as you can using all relevant and necessary information provided.
 You must write the report with markdown syntax.
 You MUST determine your own concrete and valid opinion based on the given information. Do NOT deter to general and meaningless conclusions.
 Write all used source urls at the end of the report, and make sure to not add duplicated sources, but only one reference for each.
