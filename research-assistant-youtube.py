@@ -8,6 +8,8 @@ from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
 import json
 from langchain_community.chat_models import ChatOpenAI ###
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+from io import BytesIO
+import PyPDF2
 import os #
 from dotenv import load_dotenv#
 load_dotenv()#
@@ -20,7 +22,10 @@ tracer = LangChainTracer(project_name="RA_tavily_LC")#
 
 
 
-RESULTS_PER_QUESTION = 3
+RESULTS_PER_QUESTION = 5
+# result_block = 0
+# start_point=5*result_block
+# RESULTS_PER_QUESTION = start_point+5
 
 ddg_search = DuckDuckGoSearchAPIWrapper()
 
@@ -43,33 +48,56 @@ if the question cannot be answered using the text, simply summarize the text. In
 SUMMARY_PROMPT = ChatPromptTemplate.from_template(SUMMARY_TEMPLATE)
 
 
+
+
 def scrape_text(url: str):
-    # Send a GET request to the webpage
-    try:
-        response = requests.get(url)
+    # Check if the link is a PDF file
+    if url.lower().endswith('.pdf'):
+        try:
+            # Send a GET request to the PDF link
+            response = requests.get(url)
 
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Parse the content of the request with BeautifulSoup
-            soup = BeautifulSoup(response.text, "html.parser")
+            # Check if the request was successful
+            if response.status_code == 200:
+                # Read the PDF content using PyPDF2
+                pdf_file = BytesIO(response.content)
+                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                pdf_text = ""
 
-            # Extract all text from the webpage
-            page_text = soup.get_text(separator=" ", strip=True)
+                # Extract text from each page in the PDF
+                for page_number in range(len(pdf_reader.pages)):
+                    pdf_text += pdf_reader.pages[page_number].extract_text()
 
-            # Print the extracted text
-            return page_text
-        else:
-            return f"Failed to retrieve the webpage: Status code {response.status_code}"
-    except Exception as e:
-        print(e)
-        return f"Failed to retrieve the webpage: {e}"
+                # Print or return the extracted text from the PDF
+                return pdf_text
+            else:
+                return f"Failed to retrieve the PDF file: Status code {response.status_code}"
+        except Exception as e:
+            print(e)
+            return f"Failed to retrieve the PDF file: {e}"
+    else:
+        # If the link is not a PDF file, proceed with HTML scraping
+        try:
+            response = requests.get(url)
+
+            # Check if the request was successful
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                page_text = soup.get_text(separator=" ", strip=True)
+
+                # Print or return the extracted text from the webpage
+                return page_text
+            else:
+                return f"Failed to retrieve the webpage: Status code {response.status_code}"
+        except Exception as e:
+            print(e)
+            return f"Failed to retrieve the webpage: {e}"
 
 
-url = "https://blog.langchain.dev/announcing-langsmith/"
 
 scrape_and_summarize_chain = RunnablePassthrough.assign(
     summary = RunnablePassthrough.assign(
-    text=lambda x: scrape_text(x["url"])[:10000]
+    text=lambda x: scrape_text(x["url"])[:15000]
 ) | SUMMARY_PROMPT | ChatOpenAI(model="gpt-3.5-turbo-1106") | StrOutputParser()
 ) | (lambda x: f"URL: {x['url']}\n\nSUMMARY: {x['summary']}")
 
@@ -109,8 +137,9 @@ SEARCH_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "user",
-            "Write a google search query to search online that form an "
-            "objective opinion from the following: {question}\n"
+            "draft a search query which can "
+            "search for and retrieve relevant information asked for in the following question:"
+            "question: {question}\n"
             "You must respond with a list of string in the following format: "
             '[" detailed query "].',
         ),
@@ -121,24 +150,24 @@ search_question_chain = SEARCH_PROMPT | ChatOpenAI(temperature=0) | StrOutputPar
 
 full_research_chain = search_question_chain | (lambda x: [{"question": q} for q in x]) | web_search_chain.map()
 
-WRITER_SYSTEM_PROMPT = "You are an AI critical thinker research assistant. Your sole purpose is to retrieve authentic information from the given text."  # noqa: E501
-
+WRITER_SYSTEM_PROMPT = "You are a Food Science research assistant. Your sole purpose is to retrieve authentic information from the given text."  # noqa: E501
 
 # Report prompts from https://github.com/assafelovic/gpt-researcher/blob/master/gpt_researcher/master/prompts.py
-RESEARCH_REPORT_TEMPLATE = """Information:
+RESEARCH_REPORT_TEMPLATE = """
+
+Information:
 --------
 {research_summary}
 --------
+Using the only the above information, answer the following question: "{question}"  \
+Always provide the output in json format: 
+example question:  what is the ph value and titratable acidity of item_name?
+in the example output json oject, there would be key-value pairs for 'item_name', 'ph value', 'titratable acidity' and 'description'. 
+The 'item_name' key should always be included mandatorily. For the question: "what is the ph value of mango?", the 'item_name' refers to 'mango'.
+For each key, the value must be another json object having two keys , 1. 'key_value', 2.'source_url'.
+An additional key 'other_sources' must be included listing other urls as key values.
 
-Using the above information, answer the following question or topic: "{question}" in a detailed report -- \
-If any specific information like numbers, values or facts are asked for, list them in the beginning. The report should focus on the answer to the question, should be well structured, informative, \
-concise, and should list the reasons justifying the answer.
-If it is explicitly asked in the question or topic to make the response detailed, you should strive to write the report as long as you can using all relevant and necessary information provided.
-You must write the report with markdown syntax.
-You MUST determine your own concrete and valid opinion based on the given information. Do NOT deter to general and meaningless conclusions.
-Write all used source urls at the end of the report, and make sure to not add duplicated sources, but only one reference for each.
-You must write the report in apa format.
-Please do your best, this is very important to my career."""  # noqa: E501
+"""  # noqa: E501
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -155,7 +184,7 @@ def collapse_list_of_lists(list_of_lists):
 
 chain = RunnablePassthrough.assign(
     research_summary= full_research_chain | collapse_list_of_lists
-) | prompt | ChatOpenAI(model="gpt-3.5-turbo-1106") | StrOutputParser()
+) | prompt | ChatOpenAI(model="gpt-3.5-turbo-1106",response_format={ "type": "json_object" }) |StrOutputParser()|json.loads
 
 #!/usr/bin/env python
 from fastapi import FastAPI
