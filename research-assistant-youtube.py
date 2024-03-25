@@ -155,38 +155,56 @@ full_research_chain = search_question_chain | (lambda x: [{"question": q} for q 
 WRITER_SYSTEM_PROMPT = "You are a Food Science research assistant. Your sole purpose is to retrieve authentic information from the given text containing URL-Summary Pairs."  # noqa: E501
 
 # Report prompts from https://github.com/assafelovic/gpt-researcher/blob/master/gpt_researcher/master/prompts.py
-RESEARCH_REPORT_TEMPLATE = """
-From this question identify the item_name and parameters queried for,  question: "{question}" \
-In the Example Question : What are the ph and titratable acidity of tomato?, the item_name is tomato and the parameter_1 is ph and parameter_2 is titratable acidity.
+# RESEARCH_REPORT_TEMPLATE = """
+# From this question identify the item_name and parameters queried for,  question: "{question}" \
+# In the Example Question : What are the ph and titratable acidity of tomato?, the item_name is tomato and the parameter_1 is ph and parameter_2 is titratable acidity.
 
-Now based on the information stuctured as URL-Summary pairs given below, 
+# Now based on the information stuctured as URL-Summary pairs given below, 
+# Information:
+# --------
+# {research_summary}
+# --------
+
+# For each URL-summary pair, extract the item_name and parameter values.
+# Always provide the output in the following json format: 
+
+#   (curly brace opening) "results": [
+#     (curly brace opening)
+#       "source_url": "https://example1.com",
+#       "item_name": "tomato",
+#       "ph_value": "6.0-6.8",
+#       "titratable_acidity": ""
+#     (curly brace closing),
+#    (curly brace opening)
+#       "source_url": "https://example2.com",
+#       "item_name": "tomato",
+#       "ph_value": "",
+#       "titratable_acidity": ""
+#     (curly brace closing)
+#   ]
+# (curly brace closing)
+
+# Let's think step by step:
+
+# """  # noqa: E501
+
+RESEARCH_REPORT_TEMPLATE = """
+Based only on the the information stuctured as URL-Summary pairs given below, 
 Information:
 --------
 {research_summary}
 --------
 
-For each URL-summary pair, extract the item_name and parameter values.
-Always provide the output in the following json format: 
-
-  (curly brace opening) "results": [
-    (curly brace opening)
-      "source_url": "https://example1.com",
-      "item_name": "tomato",
-      "ph_value": "6.0-6.8",
-      "titratable_acidity": ""
-    (curly brace closing),
-   (curly brace opening)
-      "source_url": "https://example2.com",
-      "item_name": "tomato",
-      "ph_value": "",
-      "titratable_acidity": ""
-    (curly brace closing)
-  ]
-(curly brace closing)
-
-Let's think step by step:
-
-"""  # noqa: E501
+answer this question independently for each URL using it's given summary,  question: "{question}" \
+Give the answer in the following format.
+###
+1.source url : www.example1.com
+answer : "answer retrieved based on www.example1.com"
+2.source url : www.example2.com
+answer : "answer retrieved based on www.example2.com"
+....
+###
+"""  
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -202,10 +220,13 @@ def collapse_list_of_lists(list_of_lists):
     # print(content)
     return "\n\n".join(content)
 
+# chain = RunnablePassthrough.assign(
+#     research_summary= full_research_chain | collapse_list_of_lists
+# ) | prompt | ChatOpenAI(model="gpt-3.5-turbo-1106",response_format={ "type": "json_object" }) |StrOutputParser()|json.loads
+
 chain = RunnablePassthrough.assign(
     research_summary= full_research_chain | collapse_list_of_lists
-) | prompt | ChatOpenAI(model="gpt-3.5-turbo-1106",response_format={ "type": "json_object" }) |StrOutputParser()|json.loads
-
+) | prompt | ChatOpenAI(model="gpt-3.5-turbo-1106") |StrOutputParser()
 #!/usr/bin/env python
 from fastapi import FastAPI
 from langserve import add_routes
@@ -226,12 +247,17 @@ app = FastAPI(
   description="A simple api server using Langchain's Runnable interfaces",
 )
 
-# add_routes(
-#     app,
-#     chain,
-#     path="/research-assistant",
-# )
+add_routes(
+    app,
+    chain,
+    path="/research-assistant",
+)
 
+
+# if __name__ == "__main__":
+#     import uvicorn
+
+#     uvicorn.run(app, host="localhost", port=8000)
 
 if __name__ == "__main__":
     import uvicorn
