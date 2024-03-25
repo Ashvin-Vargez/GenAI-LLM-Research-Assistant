@@ -195,13 +195,13 @@ Information:
 {research_summary}
 --------
 
-answer this question independently for each URL using it's given summary  question: "{question}" \
+answer this question independently for each URL using it's given summary,  question: "{question}" \
 Give the answer in the following format.
 ###
 1.source url : www.example1.com
-answer : "answer rettrieved based on www.example1.com"
+answer : "answer retrieved based on www.example1.com"
 2.source url : www.example2.com
-answer : "answer rettrieved based on www.example2.com"
+answer : "answer retrieved based on www.example2.com"
 ....
 ###
 """  
