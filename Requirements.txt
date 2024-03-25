@@ -3,6 +3,8 @@ openai
 fastapi
 requests
 duckduckgo-search
+pydantic==1.10.13
+PyPDF2
 uvicorn
 beautifulsoup4
 python-dotenv
@@ -10,3 +12,5 @@ langserve[all]
 sse_starlette
 langchain-community 
 langsmith
+langchain-openai
+
