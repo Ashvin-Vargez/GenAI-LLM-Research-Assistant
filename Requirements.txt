@@ -11,3 +11,5 @@ sse_starlette
 langchain-community 
 langsmith
 pydantic==1.10.13
+langchain-openai
+PyPDF2
