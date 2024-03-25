@@ -6,8 +6,7 @@ from bs4 import BeautifulSoup
 from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
 # from langchain.utilities import DuckDuckGoSearchAPIWrapper
 import json
-# from langchain_community.chat_models import ChatOpenAI ###
-from langchain_openai import ChatOpenAI 
+from langchain_community.chat_models import ChatOpenAI ###
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from io import BytesIO
 import PyPDF2
@@ -24,10 +23,6 @@ tracer = LangChainTracer(project_name="RA_tavily_LC")#
 
 
 RESULTS_PER_QUESTION = 5   
-
-# result_block = 0
-# start_point=5*result_block
-# RESULTS_PER_QUESTION = start_point+5
 
 ddg_search = DuckDuckGoSearchAPIWrapper()
 
@@ -107,33 +102,6 @@ web_search_chain = RunnablePassthrough.assign(
     urls = lambda x: web_search(x["question"])
 ) | (lambda x: [{"question": x["question"], "url": u} for u in x["urls"]]) | scrape_and_summarize_chain.map()
 
-## This is for Arxiv
-
-# from langchain.retrievers import ArxivRetriever
-# 
-# retriever = ArxivRetriever()
-# SUMMARY_TEMPLATE = """{doc} 
-# 
-# -----------
-# 
-# Using the above text, answer in short the following question: 
-# 
-# > {question}
-# 
-# -----------
-# if the question cannot be answered using the text, imply summarize the text. Include all factual information, numbers, stats etc if available."""  # noqa: E501
-# SUMMARY_PROMPT = ChatPromptTemplate.from_template(SUMMARY_TEMPLATE)
-# 
-# 
-# scrape_and_summarize_chain = RunnablePassthrough.assign(
-#     summary =  SUMMARY_PROMPT | ChatOpenAI(model="gpt-3.5-turbo-1106") | StrOutputParser()
-# ) | (lambda x: f"Title: {x['doc'].metadata['Title']}\n\nSUMMARY: {x['summary']}")
-# 
-# web_search_chain = RunnablePassthrough.assign(
-#     docs = lambda x: retriever.get_summaries_as_docs(x["question"])
-# )| (lambda x: [{"question": x["question"], "doc": u} for u in x["docs"]]) | scrape_and_summarize_chain.map()
-
-
 
 SEARCH_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -152,39 +120,22 @@ search_question_chain = SEARCH_PROMPT | ChatOpenAI(temperature=0) | StrOutputPar
 
 full_research_chain = search_question_chain | (lambda x: [{"question": q} for q in x]) | web_search_chain.map()
 
-WRITER_SYSTEM_PROMPT = "You are a Food Science research assistant. Your sole purpose is to retrieve authentic information from the given text containing URL-Summary Pairs."  # noqa: E501
+WRITER_SYSTEM_PROMPT = "You are a Food Science research assistant. Your sole purpose is to retrieve authentic information from the given text."  # noqa: E501
 
 # Report prompts from https://github.com/assafelovic/gpt-researcher/blob/master/gpt_researcher/master/prompts.py
 RESEARCH_REPORT_TEMPLATE = """
-From this question identify the item_name and parameters queried for,  question: "{question}" \
-In the Example Question : What are the ph and titratable acidity of tomato?, the item_name is tomato and the parameter_1 is ph and parameter_2 is titratable acidity.
 
-Now based on the information stuctured as URL-Summary pairs given below, 
 Information:
 --------
 {research_summary}
 --------
-
-For each URL-summary pair, extract the item_name and parameter values.
-Always provide the output in the following json format: 
-
-  (curly brace opening) "results": [
-    (curly brace opening)
-      "source_url": "https://example1.com",
-      "item_name": "tomato",
-      "ph_value": "6.0-6.8",
-      "titratable_acidity": ""
-    (curly brace closing),
-   (curly brace opening)
-      "source_url": "https://example2.com",
-      "item_name": "tomato",
-      "ph_value": "",
-      "titratable_acidity": ""
-    (curly brace closing)
-  ]
-(curly brace closing)
-
-Let's think step by step:
+Using the only the above information, answer the following question: "{question}"  \
+Always provide the output in json format: 
+example question:  what is the ph value and titratable acidity of item_name?
+in the example output json oject, there would be key-value pairs for 'item_name', 'ph value', 'titratable acidity' and 'description'. 
+The 'item_name' key should always be included mandatorily. For the question: "what is the ph value of mango?", the 'item_name' refers to 'mango'.
+For each key, the value must be another json object having two keys , 1. 'key_value', 2.'source_url'.
+An additional key 'other_sources' must be included listing other urls as key values.
 
 """  # noqa: E501
 
@@ -199,7 +150,6 @@ def collapse_list_of_lists(list_of_lists):
     content = []
     for l in list_of_lists:
         content.append("\n\n".join(l))
-    # print(content)
     return "\n\n".join(content)
 
 chain = RunnablePassthrough.assign(
@@ -209,16 +159,6 @@ chain = RunnablePassthrough.assign(
 #!/usr/bin/env python
 from fastapi import FastAPI
 from langserve import add_routes
-
-# test_text = '''In order to properly answer the original question ("how can langsmith help with testing?"), we need to provide additional context to the LLM. We can do this via retrieval. Retrieval is useful when you have too much data to pass to the LLM directly. You can then use a retriever to fetch only the most relevant pieces and pass those in.
-
-# In this process, we will look up relevant documents from a Retriever and then pass them into the prompt. A Retriever can be backed by anything - a SQL table, the internet, etc - but in this instance we will populate a vector store and use that as a retriever. For more information on vectorstores, see this documentation.
-
-# First, we need to load the data that we want to index. In order to do this, we will use the WebBaseLoader. This requires installing BeautifulSoup.
-# '''
-
-# chain.invoke({"text": test_text, "question": "how does langsmith help?"})
-
 
 app = FastAPI(
   title="LangChain Server",

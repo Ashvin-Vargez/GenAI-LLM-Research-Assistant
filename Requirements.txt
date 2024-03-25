@@ -10,3 +10,4 @@ langserve[all]
 sse_starlette
 langchain-community 
 langsmith
+pydantic==1.10.13
