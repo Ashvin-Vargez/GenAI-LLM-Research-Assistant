@@ -21,19 +21,16 @@ from langchain.callbacks.tracers import LangChainTracer#
 
 tracer = LangChainTracer(project_name="RA_tavily_LC")#
 
-
+from langchain_community.tools import DuckDuckGoSearchResults
 
 RESULTS_PER_QUESTION = 5   
-
-# result_block = 0
-# start_point=5*result_block
-# RESULTS_PER_QUESTION = start_point+5
 
 ddg_search = DuckDuckGoSearchAPIWrapper()
 
 
 def web_search(query: str, num_results: int = RESULTS_PER_QUESTION):
     results = ddg_search.results(query, num_results)
+    # print("these are the search results", results)
     return [r["link"] for r in results]
 
 
@@ -139,72 +136,96 @@ SEARCH_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "user",
-            "draft a search query which can "
+            "draft a detailed search query which can "
             "search for and retrieve relevant information asked for in the following question:"
             "question: {question}\n"
-            "You must respond with a list of string in the following format: "
-            '[" detailed query "].',
+            "Return the  detailed search query  in the following format: "
+            '[" detailed search query "].'
+            ,
         ),
     ]
 )
 
-search_question_chain = SEARCH_PROMPT | ChatOpenAI(temperature=0) | StrOutputParser() | json.loads
+# search_question_chain = SEARCH_PROMPT | ChatOpenAI(temperature=0) | StrOutputParser() | json.loads
 
-full_research_chain = search_question_chain | (lambda x: [{"question": q} for q in x]) | web_search_chain.map()
+# full_research_chain = search_question_chain | (lambda x: [{"question": q} for q in x]) | web_search_chain.map()
+
 
 WRITER_SYSTEM_PROMPT = "You are a Food Science research assistant. Your sole purpose is to retrieve authentic information from the given text containing URL-Summary Pairs."  # noqa: E501
 
 # Report prompts from https://github.com/assafelovic/gpt-researcher/blob/master/gpt_researcher/master/prompts.py
-# RESEARCH_REPORT_TEMPLATE = """
-# From this question identify the item_name and parameters queried for,  question: "{question}" \
-# In the Example Question : What are the ph and titratable acidity of tomato?, the item_name is tomato and the parameter_1 is ph and parameter_2 is titratable acidity.
-
-# Now based on the information stuctured as URL-Summary pairs given below, 
-# Information:
-# --------
-# {research_summary}
-# --------
-
-# For each URL-summary pair, extract the item_name and parameter values.
-# Always provide the output in the following json format: 
-
-#   (curly brace opening) "results": [
-#     (curly brace opening)
-#       "source_url": "https://example1.com",
-#       "item_name": "tomato",
-#       "ph_value": "6.0-6.8",
-#       "titratable_acidity": ""
-#     (curly brace closing),
-#    (curly brace opening)
-#       "source_url": "https://example2.com",
-#       "item_name": "tomato",
-#       "ph_value": "",
-#       "titratable_acidity": ""
-#     (curly brace closing)
-#   ]
-# (curly brace closing)
-
-# Let's think step by step:
-
-# """  # noqa: E501
-
 RESEARCH_REPORT_TEMPLATE = """
-Based only on the the information stuctured as URL-Summary pairs given below, 
+From this question identify the item_name and parameters queried for,  question: "{question}" \
+In the Example Question : What are the ph and titratable acidity of tomato?, the item_name is tomato and the parameter_1 is ph and parameter_2 is titratable acidity.
+
+Now based on the information stuctured as URL-Summary pairs given below, 
 Information:
 --------
 {research_summary}
 --------
 
-answer this question independently for each URL using it's given summary,  question: "{question}" \
-Give the answer in the following format.
-###
-1.source url : www.example1.com
-answer : "answer retrieved based on www.example1.com"
-2.source url : www.example2.com
-answer : "answer retrieved based on www.example2.com"
-....
-###
-"""  
+For each URL-summary pair in the above information, extract the item_name and parameter values into a dictionary of the following format: 
+
+  
+    (curly brace opening)
+      "source_url": (should show the exact url name from which the values are extracted)
+      "item_name": (the name of the item regarding which the information is requested)
+      "name_of_parameter_1":((replace "name_of_parameter_1" with the actual name of the parameter 1(in the given example, it is "ph"), and the key's value must be the numerical value, if the numerical value is not available, then the value range, and if numerical value or value range is unavailable,  then description  of parameter_1 obtained from the snippet corresponding to the url)
+      "name_of_parameter_2": ((replace "name_of_parameter_2" with the actual name of the parameter 2(in the given example, it is "titratable acidity"), and the key's value must be the numerical value, if the numerical value is not available, then the value range, and if numerical value or value range is unavailable,  then description  of parameter_2 obtained from the snippet corresponding to the url)
+      "url_text": ( the text snippet associated with this specific url)
+    (curly brace closing)
+
+The number of parameters should be as many as identified from the question and the names of the parameters should always match what is asked for in the question. 
+You must mandatorily create dictionaries for each source url, even if the parameter values are not present in the text snippet associated with it. Also, each dictionary must mandatorily have keys corresponding to all the parameters identified from the question.
+Now, create a json object containing all the dictionaries as values, the keys must be of the format source_1, source_2 etc. The json object must strictly follow this format. Output only the final json object  
+
+Let's think step by step:
+
+# """  # noqa: E501
+
+ # noqa: E501
+
+# RESEARCH_REPORT_TEMPLATE = """
+# Based only on the the information stuctured as URL-Summary pairs given below, 
+# Information:
+# --------
+# {research_summary}
+# --------
+
+# answer this question independently for each URL using it's given summary,  question: "{question}" \
+# Give the answer in the following format.
+# ###
+# 1.source url : www.example1.com
+# answer : "answer retrieved based on www.example1.com"
+# 2.source url : www.example2.com
+# answer : "answer retrieved based on www.example2.com"
+# ....
+# ###
+# # """  
+# RESEARCH_REPORT_TEMPLATE = """
+# ###
+# Example  1 : What are the ph and titratable acidity of tomato?-> item_name: "tomato", parameter_1: "ph', parameter_2: 'titratable acidity'
+
+# Example  2 : What are the ph, brix and water activity of watermelon?-> item_name: "warermelon", parameter_1: "ph', parameter_2: 'brix', parameter_3: 'water activity'
+# ###
+
+# Based on the examples above, from the given question, identify the item_name and parameters queried for,  question: "{question}" \
+
+# Now based on the information given below stuctured as URL-Summary pairs, extract all the source_urls and their summaries.
+# Information:
+# --------
+# {research_summary}
+# --------
+
+# Now for each source_url, create separate dictionaries based on the summary text corresponding to that source_url alone.
+ 
+# The dictionaries must find and populate the values for the following keys: source_url, item_name, summary, separate keys for parameters identified from the question given in the beginning. 
+
+# provide output as json. 
+
+# Let's think step by step:
+
+# """ 
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -214,19 +235,30 @@ prompt = ChatPromptTemplate.from_messages(
 )
 
 def collapse_list_of_lists(list_of_lists):
+    # print("this is the list",list_of_lists[:5])
     content = []
     for l in list_of_lists:
         content.append("\n\n".join(l))
-    # print(content)
+    # print("this is the content",content)
     return "\n\n".join(content)
+    
 
 # chain = RunnablePassthrough.assign(
 #     research_summary= full_research_chain | collapse_list_of_lists
 # ) | prompt | ChatOpenAI(model="gpt-3.5-turbo-1106",response_format={ "type": "json_object" }) |StrOutputParser()|json.loads
 
 chain = RunnablePassthrough.assign(
-    research_summary= full_research_chain | collapse_list_of_lists
-) | prompt | ChatOpenAI(model="gpt-3.5-turbo-1106") |StrOutputParser()
+    research_summary= web_search_chain | collapse_list_of_lists
+) | prompt | ChatOpenAI(model="gpt-3.5-turbo-1106",response_format={ "type": "json_object" }) |StrOutputParser()|json.loads
+
+# chain_2=RunnablePassthrough.assign(
+#     research_summary= full_research_chain | collapse_list_of_lists
+# )
+# response=chain_2.invoke({"question":"what is the ph value of tomato" })
+# print("this is the response", response)
+
+
+
 #!/usr/bin/env python
 from fastapi import FastAPI
 from langserve import add_routes
